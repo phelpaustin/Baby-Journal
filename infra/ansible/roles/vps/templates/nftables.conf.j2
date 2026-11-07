@@ -1,0 +1,28 @@
+#!/usr/sbin/nft -f
+# Managed by Ansible (role vps). Default deny: only SSH, HTTPS and WireGuard are reachable.
+flush ruleset
+
+table inet filter {
+    chain input {
+        type filter hook input priority 0; policy drop;
+        iif lo accept
+        ct state established,related accept
+        ct state invalid drop
+        ip protocol icmp icmp type { echo-request, destination-unreachable, time-exceeded } limit rate 10/second accept
+        ip6 nexthdr icmpv6 accept
+{% if ssh_allow_cidrs | length > 0 %}
+        ip saddr { {{ ssh_allow_cidrs | join(', ') }} } tcp dport 22 ct state new limit rate 10/minute accept
+{% else %}
+        tcp dport 22 ct state new limit rate 10/minute accept
+{% endif %}
+        tcp dport 443 accept
+        udp dport {{ wg_port }} accept
+        # The tunnel carries only traffic that the VPS itself starts toward the Mac mini.
+    }
+    chain forward {
+        type filter hook forward priority 0; policy drop;
+    }
+    chain output {
+        type filter hook output priority 0; policy accept;
+    }
+}

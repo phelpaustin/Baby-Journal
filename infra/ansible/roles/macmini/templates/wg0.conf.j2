@@ -1,0 +1,12 @@
+# Managed by Ansible (role macmini). The Mac dials OUT to the VPS, so no inbound port is needed at home.
+[Interface]
+Address = {{ mac_wg_ip }}/24
+PrivateKey = {{ vault_mac_wg_private_key }}
+
+[Peer]
+# the VPS
+PublicKey = {{ vault_vps_wg_public_key }}
+PresharedKey = {{ vault_wg_preshared_key }}
+Endpoint = {{ vps_public_ip }}:{{ wg_port }}
+AllowedIPs = {{ vps_wg_ip }}/32
+PersistentKeepalive = 25

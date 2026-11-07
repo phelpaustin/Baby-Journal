@@ -1,0 +1,122 @@
+# Managed by Ansible (role macmini). Edit group_vars, not this file.
+#
+# Two listeners serve the same site:
+#   {{ caddy_wg_bind }}:{{ caddy_wg_port }}  the VPS path. The VPS forwards raw TCP (TLS passthrough) and
+#                    prepends a PROXY-protocol header, accepted ONLY from {{ vps_wg_ip }}, so Caddy sees the
+#                    real client address and nobody else can forge one.
+#   {{ caddy_lan_bind }}:{{ caddy_lan_port }}  direct access from the home network and the tunnel.
+{
+	admin off
+{% if caddy_local_certs %}
+	local_certs
+	skip_install_trust
+{% else %}
+	email {{ acme_email }}
+{% endif %}
+	auto_https disable_redirects
+
+	# The key must be the exact listen address (the site uses `bind`), or Caddy silently ignores the block.
+	servers {{ caddy_wg_bind }}:{{ caddy_wg_port }} {
+		listener_wrappers {
+			proxy_protocol {
+				timeout 5s
+				allow {{ proxy_protocol_from }}/32
+			}
+			tls
+		}
+	}
+}
+
+(app) {
+{% if not caddy_local_certs %}
+	tls {
+		issuer acme {
+			# Only port 443 reaches us (through the VPS), so use the TLS-ALPN challenge.
+			disable_http_challenge
+		}
+	}
+{% endif %}
+	encode zstd gzip
+	request_body {
+		max_size {{ caddy_max_body }}
+	}
+
+	# The admin UI and every superuser endpoint are reachable only from the home network and
+	# the WireGuard tunnel. From the internet, only the app's own API surface exists; all else is 404.
+	@denied_external {
+		not client_ip {{ internal_cidrs | join(' ') }}
+		path /_/* /api/*
+		not path /api/health /api/bj/* /api/files/* /api/collections/users/*{% for c in app_collections %} /api/collections/{{ c }}/records /api/collections/{{ c }}/records/*{% endfor %}
+
+	}
+	respond @denied_external 404
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
+		Cross-Origin-Opener-Policy same-origin
+		Cross-Origin-Resource-Policy same-origin
+		-Server
+	}
+	# Only the app's own origin may be contacted: this also stops any accidental third-party call.
+	# (The admin UI under /_/ needs inline styles, so it is exempt; it is internal-only anyway.)
+	@app_page not path /_/*
+	header @app_page Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; font-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'"
+
+	# Caching: the app shell must always be re-checked; hashed assets never change; API answers
+	# and protected files are private (tokenised URLs must not sit in shared caches).
+	@shell path / /index.html /sw.js /workbox-*.js /manifest.webmanifest
+	header @shell >Cache-Control "no-cache"
+	@assets path /assets/*
+	header @assets >Cache-Control "public, max-age=31536000, immutable"
+	@api path /api/*
+	header @api >Cache-Control "private, no-store"
+	@files path /api/files/*
+	header @files >Cache-Control "private, max-age=600"
+	@manifest path *.webmanifest
+	header @manifest >Content-Type "application/manifest+json"
+
+	log {
+		output file {{ caddy_log_dir }}/access.log {
+			roll_size 10MiB
+			roll_keep 10
+			roll_keep_for {{ log_retention_hours }}h
+		}
+		format filter {
+			wrap json
+			fields {
+				# File URLs carry a short-lived token in the query string: never write it down.
+				request>uri query {
+					replace token REDACTED
+				}
+				request>headers>Authorization delete
+				request>headers>Cookie delete
+				resp_headers>Set-Cookie delete
+			}
+		}
+	}
+
+	reverse_proxy {{ pb_upstream }} {
+		# Overwrite, never append: whatever the client sent is discarded.
+		header_up X-Real-IP {client_ip}
+		header_up X-Forwarded-For {client_ip}
+		transport http {
+			dial_timeout 5s
+			read_timeout 1h
+			write_timeout 1h
+		}
+	}
+}
+
+{{ domain }}:{{ caddy_wg_port }} {
+	bind {{ caddy_wg_bind }}
+	import app
+}
+
+{{ domain }}:{{ caddy_lan_port }} {
+	bind {{ caddy_lan_bind }}
+	import app
+}

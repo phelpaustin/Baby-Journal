@@ -1,0 +1,26 @@
+#!/bin/bash
+# Managed by Ansible. Mount guard (architecture 7.2): PocketBase starts only when the external SSD is
+# really mounted, so nothing is ever written to the internal disk by mistake.
+set -euo pipefail
+VOLUME="{{ data_volume }}"
+MARKER="{{ data_marker }}"
+ALERT="{{ bj_root }}/bin/bj-alert.sh"
+
+if [ ! -f "$MARKER" ]; then
+  "$ALERT" critical "The external SSD is not mounted. The journal is stopped on purpose."
+  exit 78
+fi
+# The volume must be a different filesystem than the internal disk (an empty folder with the same
+# name, marker included, on the internal disk must not pass). `df -P` works the same on macOS and Linux.
+dev() { df -P "$1" | awk 'NR==2 {print $1}'; }
+if [ "$(dev "$VOLUME")" = "$(dev /)" ]; then
+  "$ALERT" critical "$VOLUME is on the internal disk. The journal is stopped on purpose."
+  exit 78
+fi
+mkdir -p "{{ bj_data_dir }}"
+exec "{{ bj_root }}/bin/pocketbase" serve \
+  --dir "{{ bj_data_dir }}" \
+  --migrationsDir "{{ bj_root }}/backend/pb_migrations" \
+  --hooksDir "{{ bj_root }}/backend/pb_hooks" \
+  --publicDir "{{ bj_root }}/pb_public" \
+  --http "127.0.0.1:8090"

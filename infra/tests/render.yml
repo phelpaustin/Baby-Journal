@@ -1,0 +1,43 @@
+---
+# Renders the production templates into a directory so they can be validated and run in tests.
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../ansible/group_vars/all.yml
+    - "{{ test_vars_file }}"
+  tasks:
+    - name: Make the output directory
+      ansible.builtin.file: { path: "{{ out }}", state: directory }
+
+    - name: Render the Mac mini templates
+      ansible.builtin.template:
+        src: "../ansible/roles/macmini/templates/{{ item.src }}"
+        dest: "{{ out }}/{{ item.dest }}"
+        mode: "0644"
+      loop:
+        - { src: Caddyfile.j2, dest: Caddyfile }
+        - { src: wg0.conf.j2, dest: mac-wg0.conf }
+        - { src: com.babyjournal.pocketbase.plist.j2, dest: com.babyjournal.pocketbase.plist }
+        - { src: com.babyjournal.caddy.plist.j2, dest: com.babyjournal.caddy.plist }
+        - { src: com.babyjournal.wireguard.plist.j2, dest: com.babyjournal.wireguard.plist }
+        - { src: bj-start-pocketbase.sh.j2, dest: bj-start-pocketbase.sh }
+        - { src: bj-alert.sh.j2, dest: bj-alert.sh }
+        - { src: bj-monthly-export.sh.j2, dest: bj-monthly-export.sh }
+        - { src: backup.env.j2, dest: backup.env }
+        - { src: com.babyjournal.backup.plist.j2, dest: com.babyjournal.backup.plist }
+        - { src: com.babyjournal.backup-watch.plist.j2, dest: com.babyjournal.backup-watch.plist }
+        - { src: com.babyjournal.export.plist.j2, dest: com.babyjournal.export.plist }
+
+    - name: Render the VPS templates
+      ansible.builtin.template:
+        src: "../ansible/roles/vps/templates/{{ item.src }}"
+        dest: "{{ out }}/{{ item.dest }}"
+        mode: "0644"
+      loop:
+        - { src: haproxy.cfg.j2, dest: haproxy.cfg }
+        - { src: wg0.conf.j2, dest: vps-wg0.conf }
+        - { src: nftables.conf.j2, dest: nftables.conf }
+        - { src: sshd_hardening.conf.j2, dest: sshd_hardening.conf }
+        - { src: journald.conf.j2, dest: journald.conf }
+        - { src: 20auto-upgrades.j2, dest: 20auto-upgrades }

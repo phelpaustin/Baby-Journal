@@ -1,0 +1,5 @@
+# Managed by Ansible (role vps): short retention, the VPS keeps no history of who connected.
+[Journal]
+Storage=persistent
+MaxRetentionSec={{ journal_retention_days }}day
+SystemMaxUse=200M

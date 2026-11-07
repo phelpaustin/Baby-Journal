@@ -1,0 +1,8 @@
+---
+- name: Deploy the application code to the Mac mini
+  hosts: macmini
+  vars_files: [vault.yml]
+  tasks:
+    - ansible.builtin.include_role:
+        name: macmini
+        tasks_from: deploy

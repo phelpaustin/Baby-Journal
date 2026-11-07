@@ -1,0 +1,8 @@
+{
+  "name": "baby-journal-backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "tests/run.sh"
+  }
+}

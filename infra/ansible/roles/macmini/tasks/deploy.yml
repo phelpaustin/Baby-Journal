@@ -1,0 +1,28 @@
+---
+# Copies the application code to the Mac mini. Run after every release: build the client first
+# (cd client && npm run build). PocketBase applies new migrations when it restarts.
+- name: Migrations
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../backend/pb_migrations/"
+    dest: "{{ bj_root }}/backend/pb_migrations/"
+    owner: root
+    group: "{{ bj_group }}"
+    mode: preserve
+  notify: restart pocketbase
+
+- name: Server hooks
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../backend/pb_hooks/"
+    dest: "{{ bj_root }}/backend/pb_hooks/"
+    owner: root
+    group: "{{ bj_group }}"
+    mode: preserve
+  notify: restart pocketbase
+
+- name: The built app (served by PocketBase)
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../client/dist/"
+    dest: "{{ bj_root }}/pb_public/"
+    owner: root
+    group: "{{ bj_group }}"
+    mode: preserve

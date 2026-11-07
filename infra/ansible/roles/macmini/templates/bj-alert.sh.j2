@@ -1,0 +1,11 @@
+#!/bin/bash
+# Managed by Ansible. Usage: bj-alert.sh <warning|critical> "message"
+# Always logs; also posts to the alert URL if one is configured. The channel must be one that
+# still works when the journal and the VPS are down (architecture 7.3).
+level="${1:-warning}"; shift || true
+msg="$*"
+echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [$level] $msg" >> "{{ caddy_log_dir }}/alerts.log"
+logger -t babyjournal "[$level] $msg" 2>/dev/null || true
+{% if alert_url %}
+curl -fsS -m 10 -H "Title: Baby Journal ($level)" -d "$msg" "{{ alert_url }}" >/dev/null 2>&1 || true
+{% endif %}

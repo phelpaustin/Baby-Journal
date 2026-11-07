@@ -1,0 +1,11 @@
+---
+- name: restart wireguard
+  ansible.builtin.systemd: { name: "wg-quick@{{ wg_interface }}", state: restarted }
+- name: reload haproxy
+  ansible.builtin.systemd: { name: haproxy, state: reloaded }
+- name: reload nftables
+  ansible.builtin.systemd: { name: nftables, state: restarted }
+- name: reload sshd
+  ansible.builtin.systemd: { name: ssh, state: reloaded }
+- name: restart journald
+  ansible.builtin.systemd: { name: systemd-journald, state: restarted }

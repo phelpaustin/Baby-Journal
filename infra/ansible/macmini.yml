@@ -1,0 +1,5 @@
+---
+- name: Configure the Mac mini (PocketBase, Caddy, WireGuard)
+  hosts: macmini
+  vars_files: [vault.yml]
+  roles: [macmini]

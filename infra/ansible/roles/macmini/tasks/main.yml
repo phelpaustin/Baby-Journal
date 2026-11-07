@@ -1,0 +1,179 @@
+---
+- name: This role is for macOS only
+  ansible.builtin.assert:
+    that: ansible_os_family == "Darwin"
+    fail_msg: "Run this play against the Mac mini."
+
+- name: Checksums must be filled in (pinned, verified downloads)
+  ansible.builtin.assert:
+    that:
+      - pocketbase_sha256 is defined and pocketbase_sha256 | length == 64
+      - caddy_sha256 is defined and caddy_sha256 | length == 64
+    fail_msg: "Set pocketbase_sha256 and caddy_sha256 in group_vars (from the release checksum files)."
+
+- name: The service user exists (create it by hand as a standard user, see the runbook)
+  ansible.builtin.command: "id {{ bj_user }}"
+  changed_when: false
+
+- name: Directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default('root') }}"
+    group: "{{ item.group | default('wheel') }}"
+    mode: "{{ item.mode | default('0755') }}"
+  loop:
+    - { path: "{{ bj_root }}" }
+    - { path: "{{ bj_root }}/bin" }
+    - { path: "{{ bj_root }}/etc", mode: "0750", group: "{{ bj_group }}" }
+    - { path: "{{ bj_root }}/home", owner: "{{ bj_user }}", group: "{{ bj_group }}", mode: "0700" }
+    - { path: "{{ caddy_log_dir }}", owner: "{{ bj_user }}", group: "{{ bj_group }}", mode: "0750" }
+
+- name: Download directory
+  ansible.builtin.file: { path: "{{ bj_root }}/downloads", state: directory, mode: "0755" }
+
+- name: Download PocketBase (pinned; the download is rejected unless its SHA-256 matches)
+  ansible.builtin.get_url:
+    url: "https://github.com/pocketbase/pocketbase/releases/download/v{{ pocketbase_version }}/pocketbase_{{ pocketbase_version }}_darwin_{{ mac_arch }}.zip"
+    dest: "{{ bj_root }}/downloads/pocketbase-{{ pocketbase_version }}.zip"
+    checksum: "sha256:{{ pocketbase_sha256 }}"
+    mode: "0644"
+  register: pb_dl
+- name: Install PocketBase
+  ansible.builtin.unarchive:
+    src: "{{ bj_root }}/downloads/pocketbase-{{ pocketbase_version }}.zip"
+    dest: "{{ bj_root }}/bin"
+    remote_src: true
+    include: [pocketbase]
+  when: pb_dl is changed
+  notify: restart pocketbase
+
+- name: Download Caddy (pinned; rejected unless its SHA-256 matches)
+  ansible.builtin.get_url:
+    url: "https://github.com/caddyserver/caddy/releases/download/v{{ caddy_version }}/caddy_{{ caddy_version }}_mac_{{ mac_arch }}.tar.gz"
+    dest: "{{ bj_root }}/downloads/caddy-{{ caddy_version }}.tar.gz"
+    checksum: "sha256:{{ caddy_sha256 }}"
+    mode: "0644"
+  register: caddy_dl
+- name: Install Caddy
+  ansible.builtin.unarchive:
+    src: "{{ bj_root }}/downloads/caddy-{{ caddy_version }}.tar.gz"
+    dest: "{{ bj_root }}/bin"
+    remote_src: true
+    include: [caddy]
+  when: caddy_dl is changed
+  notify: restart caddy
+
+- name: Scripts
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ bj_root }}/bin/{{ item }}"
+    mode: "0755"
+    owner: root
+    group: wheel
+  loop: [bj-start-pocketbase.sh, bj-alert.sh]
+
+- name: Caddyfile (validated before it is installed)
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ bj_root }}/etc/Caddyfile"
+    owner: root
+    group: "{{ bj_group }}"
+    mode: "0640"
+    validate: "{{ bj_root }}/bin/caddy validate --adapter caddyfile --config %s"
+  notify: restart caddy
+
+- name: WireGuard configuration (private key, root only)
+  ansible.builtin.template:
+    src: wg0.conf.j2
+    dest: "{{ bj_root }}/etc/{{ wg_interface }}.conf"
+    owner: root
+    group: wheel
+    mode: "0600"
+  notify: restart wireguard
+
+- name: launchd daemons (validated with plutil)
+  ansible.builtin.template:
+    src: "{{ item }}.plist.j2"
+    dest: "/Library/LaunchDaemons/{{ item }}.plist"
+    owner: root
+    group: wheel
+    mode: "0644"
+    validate: plutil -lint %s
+  loop: [com.babyjournal.wireguard, com.babyjournal.pocketbase, com.babyjournal.caddy]
+  notify: [restart wireguard, restart caddy, restart pocketbase]
+
+- name: Power policy - restart after a power cut, never sleep
+  ansible.builtin.command: pmset -a autorestart 1 sleep 0 disksleep 0 womp 1
+  changed_when: false
+
+- name: macOS application firewall on, with stealth mode
+  ansible.builtin.command: "/usr/libexec/ApplicationFirewall/socketfilterfw {{ item }}"
+  loop: ["--setglobalstate on", "--setstealthmode on"]
+  changed_when: false
+
+# ------------------------------------------------------------------ backups and recovery
+- name: Backup tools (restic, rclone) - Homebrew refuses to run as root
+  ansible.builtin.command: "{{ brew_prefix }}/bin/brew install restic rclone"
+  become_user: "{{ brew_user }}"
+  changed_when: false
+
+- name: State and export folders on the SSD
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ bj_user }}"
+    group: "{{ bj_group }}"
+    mode: "0750"
+  loop: ["{{ bj_state_dir }}", "{{ export_dir }}"]
+
+- name: Backup and export tools
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../ops/{{ item }}"
+    dest: "{{ bj_root }}/bin/{{ item }}"
+    owner: root
+    group: wheel
+    mode: "0755"
+  loop: [bj_backup.py, bj_export.py]
+
+- name: Monthly export wrapper
+  ansible.builtin.template:
+    src: bj-monthly-export.sh.j2
+    dest: "{{ bj_root }}/bin/bj-monthly-export.sh"
+    owner: root
+    group: wheel
+    mode: "0755"
+
+- name: Backup settings (holds the repository passphrase, so readable by the service user only)
+  ansible.builtin.template:
+    src: backup.env.j2
+    dest: "{{ bj_root }}/etc/backup.env"
+    owner: "{{ bj_user }}"
+    group: "{{ bj_group }}"
+    mode: "0600"
+
+- name: Backup, watchdog and export jobs (validated with plutil)
+  ansible.builtin.template:
+    src: "{{ item }}.plist.j2"
+    dest: "/Library/LaunchDaemons/{{ item }}.plist"
+    owner: root
+    group: wheel
+    mode: "0644"
+    validate: plutil -lint %s
+  loop: [com.babyjournal.backup, com.babyjournal.backup-watch, com.babyjournal.export]
+  register: job_plists
+
+- name: Load the jobs
+  ansible.builtin.shell: |
+    launchctl bootout system/{{ item.item }} 2>/dev/null || true
+    launchctl bootstrap system /Library/LaunchDaemons/{{ item.item }}.plist
+  loop: "{{ job_plists.results }}"
+  when: item is changed
+
+# The live database changes constantly, so a Time Machine copy of it is not a consistent backup.
+# Exclude it; Time Machine still copies the nightly snapshots, manifests and exports.
+- name: Keep the live database out of Time Machine
+  ansible.builtin.command: "tmutil addexclusion -p {{ bj_data_dir }}/{{ item }}"
+  loop: [data.db, data.db-wal, data.db-shm, auxiliary.db, auxiliary.db-wal, auxiliary.db-shm]
+  changed_when: false
+  failed_when: false

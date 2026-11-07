@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.babyjournal.backup-watch</string>
+  <key>UserName</key><string>{{ bj_user }}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string><string>{{ bj_root }}/bin/bj_backup.py</string>
+    <string>--env-file</string><string>{{ bj_root }}/etc/backup.env</string><string>watch</string>
+  </array>
+  <!-- every 30 minutes: raises the 18 h and 24 h alerts, and reports a failed run -->
+  <key>StartInterval</key><integer>1800</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>{{ caddy_log_dir }}/backup-watch.log</string>
+  <key>StandardErrorPath</key><string>{{ caddy_log_dir }}/backup-watch.log</string>
+</dict>
+</plist>

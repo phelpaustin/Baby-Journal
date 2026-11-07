@@ -1,0 +1,33 @@
+# Managed by Ansible (role vps). A TCP forwarder: it never decrypts anything.
+# TLS passthrough means the VPS holds no certificate and no data and sees only
+# connection metadata (addresses and times); logs are kept briefly.
+global
+    log /dev/log local0 notice
+    maxconn 2000
+    user haproxy
+    group haproxy
+    daemon
+    # No stats socket and no admin interface.
+
+defaults
+    mode tcp
+    log global
+    option dontlognull
+    option clitcpka
+    option srvtcpka
+    timeout connect 5s
+    timeout client  1h       # long uploads (a multi-GB video on slow upstream)
+    timeout server  1h
+    timeout tunnel  1h
+
+frontend https_in
+    bind {{ haproxy_bind | default('0.0.0.0') }}:{{ haproxy_port | default(443) }}
+{% if haproxy_bind_v6 | default('') %}
+    bind {{ haproxy_bind_v6 }}:{{ haproxy_port | default(443) }}
+{% endif %}
+    default_backend home
+
+backend home
+    # After the Mac restarts, the VPS notices within about 10 seconds (2 good checks, 5 s apart).
+    # send-proxy-v2 passes the real client address to Caddy, which accepts it only from this host.
+    server mac {{ haproxy_upstream | default(mac_wg_ip ~ ':' ~ caddy_wg_port) }} send-proxy-v2{% if haproxy_source is defined %} source {{ haproxy_source }}{% endif %} check inter 5s fall 3 rise 2

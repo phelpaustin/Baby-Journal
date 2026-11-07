@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.babyjournal.caddy</string>
+  <key>UserName</key><string>{{ bj_user }}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{ bj_root }}/bin/caddy</string><string>run</string>
+    <string>--config</string><string>{{ bj_root }}/etc/Caddyfile</string>
+    <string>--adapter</string><string>caddyfile</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key><string>{{ bj_root }}/home</string>
+    <key>XDG_DATA_HOME</key><string>{{ bj_root }}/home/data</string>
+    <key>XDG_CONFIG_HOME</key><string>{{ bj_root }}/home/config</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardOutPath</key><string>{{ caddy_log_dir }}/caddy.log</string>
+  <key>StandardErrorPath</key><string>{{ caddy_log_dir }}/caddy.log</string>
+</dict>
+</plist>

@@ -1,0 +1,29 @@
+{
+  "name": "baby-journal-client",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "deploy:local": "vite build && rm -rf ../backend/pb_public && mkdir -p ../backend/pb_public && cp -r dist/. ../backend/pb_public/"
+  },
+  "dependencies": {
+    "hash-wasm": "^4.12.0",
+    "idb": "^8.0.4",
+    "pocketbase": "^0.28.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.3",
+    "@vitejs/plugin-react": "^6.2.1",
+    "fake-indexeddb": "^6.2.7",
+    "jsdom": "^30.1.3",
+    "vite": "^8.3.5",
+    "vite-plugin-pwa": "^2.0.0",
+    "vitest": "^5.1.0"
+  }
+}

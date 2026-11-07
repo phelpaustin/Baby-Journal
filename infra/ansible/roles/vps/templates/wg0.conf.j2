@@ -1,0 +1,11 @@
+# Managed by Ansible (role vps).
+[Interface]
+Address = {{ vps_wg_ip }}/24
+ListenPort = {{ wg_port }}
+PrivateKey = {{ vault_vps_wg_private_key }}
+
+[Peer]
+# the Mac mini
+PublicKey = {{ vault_mac_wg_public_key }}
+PresharedKey = {{ vault_wg_preshared_key }}
+AllowedIPs = {{ mac_wg_ip }}/32

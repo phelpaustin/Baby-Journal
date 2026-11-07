@@ -1,0 +1,11 @@
+tools/pocketbase
+tools/pb.zip
+tools/CHANGELOG.md
+tools/LICENSE.md
+backend/pb_data/
+backend/pb_public/
+node_modules/
+client/dist/
+tools/caddy
+__pycache__/
+*.pyc

@@ -1,0 +1,19 @@
+#!/bin/bash
+# Managed by Ansible. Monthly plain export (architecture 9): everything in open formats, made from the
+# newest local database snapshot plus the originals, so it needs neither PocketBase nor the network.
+set -uo pipefail
+STATE="{{ bj_state_dir }}"
+OUT_ROOT="{{ export_dir }}"
+ALERT="{{ bj_root }}/bin/bj-alert.sh"
+LATEST="$(ls -1d "$STATE"/snapshots/*/ 2>/dev/null | sort | tail -1)"
+if [ -z "$LATEST" ]; then "$ALERT" warning "Monthly export skipped: no database snapshot exists yet."; exit 0; fi
+COLL="$(sqlite3 "$LATEST/data.db" "SELECT id FROM _collections WHERE name='media_originals';")"
+DEST="$OUT_ROOT/$(date +%F)"
+mkdir -p "$OUT_ROOT"
+/usr/bin/python3 "{{ bj_root }}/bin/bj_export.py" --db "$LATEST/data.db" --originals "{{ bj_data_dir }}/storage/$COLL" --out "$DEST"
+code=$?
+if [ $code -ne 0 ]; then "$ALERT" critical "Monthly export finished with problems (exit $code). See $DEST/*/README.md."; exit $code; fi
+# keep the three newest exports
+ls -1d "$OUT_ROOT"/*/ 2>/dev/null | sort | head -n -3 | while read -r old; do rm -rf "$old"; done
+"$ALERT" warning "Monthly export written to $DEST" >/dev/null 2>&1 || true
+exit 0

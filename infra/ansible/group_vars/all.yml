@@ -1,0 +1,75 @@
+---
+# Single source of truth for the network layer. Secrets are NOT here: see vault.example.yml.
+
+# ---- identity
+domain: journal.example.com            # CHANGE: the name family members type
+acme_email: you@example.com            # CHANGE: Let's Encrypt expiry notices go here
+
+# ---- WireGuard: the Mac mini dials out to the VPS, so home CGNAT does not matter
+wg_interface: wg0
+wg_port: 51820
+wg_subnet: 10.77.0.0/24
+vps_wg_ip: 10.77.0.1
+mac_wg_ip: 10.77.0.2
+vps_public_ip: 203.0.113.10            # CHANGE: the VPS's public address
+
+# ---- Caddy on the Mac mini
+caddy_local_certs: false               # true only in tests: use Caddy's own CA instead of Let's Encrypt
+caddy_wg_bind: "{{ mac_wg_ip }}"       # VPS path: listens on the tunnel address only
+caddy_wg_port: 8443
+caddy_lan_bind: "0.0.0.0"              # home network
+caddy_lan_port: 443
+proxy_protocol_from: "{{ vps_wg_ip }}" # the only address allowed to send a PROXY-protocol header
+caddy_max_body: 5200MB                 # slightly above the 5 GB per-file limit
+log_retention_hours: 168               # access logs: 7 days
+pb_upstream: 127.0.0.1:8090
+
+# Addresses that may reach the admin UI and superuser API (home network and the tunnel).
+internal_cidrs:
+  - "{{ wg_subnet }}"
+  - 192.168.0.0/16
+  - 172.16.0.0/12
+  - 10.0.0.0/8
+  - 127.0.0.0/8
+  - fd00::/8
+  - ::1/128
+
+# Collections the app may use through the public API.
+app_collections: [journals, members, invites, entries, entry_versions, media, media_originals, audit_log, backup_runs]
+
+# ---- VPS
+vps_admin_user: deploy                 # CHANGE: your non-root SSH user
+ssh_allow_cidrs: []                    # [] = SSH from anywhere (keys only); list your own addresses to restrict
+journal_retention_days: 7              # VPS logs: counts and errors only, short retention
+
+# ---- Mac mini
+bj_user: babyjournal                   # dedicated standard (non-admin) user, created by hand: see the runbook
+bj_group: staff
+data_volume: /Volumes/BabyJournal      # external SSD mount point
+data_marker: "{{ data_volume }}/.bj-volume-marker"
+bj_root: /usr/local/babyjournal        # binaries, config, hooks (internal disk)
+bj_data_dir: "{{ data_volume }}/pb_data"
+caddy_log_dir: /var/log/babyjournal
+pocketbase_version: "0.40.6"
+caddy_version: "2.11.8"
+alert_url: ""                          # optional ntfy-style URL that still works when the site is down
+
+# ---- Mac mini binaries: fill these from the release checksum files before the first run
+mac_arch: arm64                        # arm64 for Apple Silicon, amd64 for Intel
+brew_prefix: /opt/homebrew
+pocketbase_sha256: ""
+caddy_sha256: ""
+
+# ---- Backups and recovery (step 5)
+bj_state_dir: "{{ data_volume }}/backup-state"   # staging, local DB snapshots, manifests, reports, logs (Time Machine copies this)
+export_dir: "{{ data_volume }}/exports"          # monthly plain exports; the three newest are kept
+restic_repository: "rclone:gdrive:babyjournal-restic"   # CHANGE: any restic repository (see docs/recovery.md)
+backup_pb_user: backup@journal.local             # a dedicated PocketBase superuser used only by the backup job
+backup_hour: 3
+backup_minute: 15
+backup_include_derived: 0                        # 1 also stores display/playback copies offsite (more space, faster restore)
+backup_verify_sample_files: 3
+backup_check_subset: "5%"
+healthcheck_url: ""                              # optional dead-man switch, e.g. https://hc-ping.com/<uuid>
+purge_enable: "0"                                # "1" lets the daily trash purge delete (after reviewing dry runs)
+brew_user: admin                                 # the account that owns Homebrew (it refuses to run as root)

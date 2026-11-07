@@ -1,0 +1,11 @@
+---
+# Copy to vault.yml and encrypt:  ansible-vault encrypt vault.yml
+# Keep an offline copy of the vault password and of every key below (section 8 of the architecture).
+vault_vps_wg_private_key: "REPLACE: output of  wg genkey"
+vault_vps_wg_public_key: "REPLACE: output of  echo <private> | wg pubkey"
+vault_mac_wg_private_key: "REPLACE: output of  wg genkey"
+vault_mac_wg_public_key: "REPLACE: output of  echo <private> | wg pubkey"
+vault_wg_preshared_key: "REPLACE: output of  wg genpsk"
+vault_alert_url: ""
+vault_restic_password: "REPLACE: a long random passphrase. If you lose it the offsite backup cannot be read. Store a copy offline."
+vault_backup_pb_password: "REPLACE: password of the backup superuser (create it with: pocketbase superuser create backup@journal.local <password>)"

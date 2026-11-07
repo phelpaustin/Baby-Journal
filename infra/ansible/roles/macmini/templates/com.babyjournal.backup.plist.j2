@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.babyjournal.backup</string>
+  <key>UserName</key><string>{{ bj_user }}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string><string>{{ bj_root }}/bin/bj_backup.py</string>
+    <string>--env-file</string><string>{{ bj_root }}/etc/backup.env</string><string>backup</string>
+  </array>
+  <!-- nightly; if the Mac was asleep or off at that time, launchd runs it when it wakes -->
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>{{ backup_hour }}</integer><key>Minute</key><integer>{{ backup_minute }}</integer></dict>
+  <key>Nice</key><integer>10</integer>
+  <key>LowPriorityIO</key><true/>
+  <key>StandardOutPath</key><string>{{ caddy_log_dir }}/backup.log</string>
+  <key>StandardErrorPath</key><string>{{ caddy_log_dir }}/backup.log</string>
+</dict>
+</plist>

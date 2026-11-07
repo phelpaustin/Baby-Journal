@@ -1,0 +1,14 @@
+---
+- name: restart wireguard
+  ansible.builtin.shell: |
+    launchctl bootout system/com.babyjournal.wireguard 2>/dev/null || true
+    {{ brew_prefix }}/bin/wg-quick down {{ bj_root }}/etc/{{ wg_interface }}.conf 2>/dev/null || true
+    launchctl bootstrap system /Library/LaunchDaemons/com.babyjournal.wireguard.plist
+- name: restart caddy
+  ansible.builtin.shell: |
+    launchctl bootout system/com.babyjournal.caddy 2>/dev/null || true
+    launchctl bootstrap system /Library/LaunchDaemons/com.babyjournal.caddy.plist
+- name: restart pocketbase
+  ansible.builtin.shell: |
+    launchctl bootout system/com.babyjournal.pocketbase 2>/dev/null || true
+    launchctl bootstrap system /Library/LaunchDaemons/com.babyjournal.pocketbase.plist

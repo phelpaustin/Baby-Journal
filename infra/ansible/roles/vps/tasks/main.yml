@@ -1,0 +1,71 @@
+---
+- name: Install packages
+  ansible.builtin.apt:
+    name: [wireguard-tools, haproxy, nftables, unattended-upgrades]
+    state: present
+    update_cache: true
+
+- name: WireGuard configuration (private key, readable by root only)
+  ansible.builtin.template:
+    src: wg0.conf.j2
+    dest: "/etc/wireguard/{{ wg_interface }}.conf"
+    owner: root
+    group: root
+    mode: "0600"
+  notify: restart wireguard
+
+- name: Enable WireGuard
+  ansible.builtin.systemd:
+    name: "wg-quick@{{ wg_interface }}"
+    enabled: true
+    state: started
+
+- name: HAProxy configuration (validated before it is installed)
+  ansible.builtin.template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    owner: root
+    group: root
+    mode: "0644"
+    validate: haproxy -c -f %s
+  notify: reload haproxy
+
+- name: Firewall rules (validated before they are installed)
+  ansible.builtin.template:
+    src: nftables.conf.j2
+    dest: /etc/nftables.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: nft -c -f %s
+  notify: reload nftables
+
+- name: Enable the firewall and the forwarder
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop: [nftables, haproxy]
+
+- name: SSH hardening (validated before it is installed)
+  ansible.builtin.template:
+    src: sshd_hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/10-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: sshd -t -f %s
+  notify: reload sshd
+
+- name: Automatic security updates
+  ansible.builtin.template:
+    src: 20auto-upgrades.j2
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    mode: "0644"
+
+- name: Short log retention
+  ansible.builtin.template:
+    src: journald.conf.j2
+    dest: /etc/systemd/journald.conf.d/retention.conf
+    mode: "0644"
+  notify: restart journald

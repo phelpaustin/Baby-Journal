@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.babyjournal.wireguard</string>
+  <!-- Runs at boot with no login. wg-quick brings the tunnel up; wireguard-go keeps it alive. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{ brew_prefix }}/bin/wg-quick</string><string>up</string><string>{{ bj_root }}/etc/{{ wg_interface }}.conf</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict><key>PATH</key><string>{{ brew_prefix }}/bin:{{ brew_prefix }}/sbin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>{{ caddy_log_dir }}/wireguard.log</string>
+  <key>StandardErrorPath</key><string>{{ caddy_log_dir }}/wireguard.log</string>
+</dict>
+</plist>

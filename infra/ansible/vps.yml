@@ -1,0 +1,5 @@
+---
+- name: Configure the VPS (WireGuard and a TLS-passthrough forwarder)
+  hosts: vps
+  vars_files: [vault.yml]
+  roles: [vps]

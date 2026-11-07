@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.babyjournal.export</string>
+  <key>UserName</key><string>{{ bj_user }}</string>
+  <key>ProgramArguments</key><array><string>{{ bj_root }}/bin/bj-monthly-export.sh</string></array>
+  <key>StartCalendarInterval</key>
+  <dict><key>Day</key><integer>1</integer><key>Hour</key><integer>4</integer><key>Minute</key><integer>30</integer></dict>
+  <key>Nice</key><integer>10</integer>
+  <key>StandardOutPath</key><string>{{ caddy_log_dir }}/export.log</string>
+  <key>StandardErrorPath</key><string>{{ caddy_log_dir }}/export.log</string>
+</dict>
+</plist>
