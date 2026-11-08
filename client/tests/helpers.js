@@ -42,7 +42,7 @@ export async function device(user, opts = {}) {
   const uploaded = [];
   const queue = createMediaQueue({
     pb, db, userId: user.id, engine, online, schedule: false,
-    transport: opts.transport || fetchTransport,
+    transport: opts.transport || fetchTransport, onAttempt: opts.onAttempt,
     onUploaded: async (item, media) => { uploaded.push(media); },
   });
   return { pb, db, engine, queue, state, uploaded, user };

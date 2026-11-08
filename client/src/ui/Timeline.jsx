@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSession, useLoader, useQueueState } from "./context.js";
 import { useJournalInfo, JournalHeader } from "./journal.jsx";
 import { ENTRY_TYPES, typeLabel, milestoneLabel } from "./constants.js";
 import { lifeStage, ageOn, formatDate } from "../lib/age.js";
 import { MediaThumb } from "./mediaUi.jsx";
+import { diag } from "../lib/diag.js";
 
 export function Timeline({ jid }) {
   const { engine, data } = useSession();
@@ -11,6 +12,7 @@ export function Timeline({ jid }) {
   const q = useQueueState();
   const [entries] = useLoader(() => engine.listEntries(jid), [jid], { watchEngine: true });
   const [media] = useLoader(async () => (await data.media(jid).catch(() => ({ value: [] }))).value, [jid]);
+  useEffect(() => { if (entries) diag.markTimeline(); }, [entries]); // pilot timing: first entries visible
   const [type, setType] = useState("");
   const [search, setSearch] = useState("");
   const [trash, setTrash] = useState(false);

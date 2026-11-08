@@ -7,20 +7,20 @@ It is ~70 KB: do not read it whole. Section map: 2 requirements, 4 clients, 5 ba
 
 ## Status (build order, section 15)
 1 data foundation done | 2 media integrity done | 3 offline PWA done (not yet on real phones) | 4 network/security done (not yet on real hardware) |
-5 backups/recovery done (not yet on Google Drive or the Mac) | **6 pilot on real phones: next, needs the owner** | 7 operate.
+5 backups/recovery done (not yet on Google Drive or the Mac) | 6 migration tooling + pilot kit built and tested (`ops/bj_import.py`, `bj_firestore_adapter.py`, in-app diagnostics, `infra/docs/migration.md`, `pilot.md`); **the real import needs sample Firestore documents from the owner, and the pilot needs real phones** | 7 operate.
 Nothing here has run on real infrastructure. Open owner decisions are listed at the end of README.md and infra/docs/*.md.
 
 ## Layout
 - `backend/` PocketBase 0.40.6 (pinned): `pb_migrations/` schema + rules, `pb_hooks/` routes (`main.pb.js` entries/invites/members, `media.pb.js`, `backup.pb.js`, `maintenance.pb.js`) and shared code (`lib.js`, `media_lib.js`, `maintenance_lib.js`), `tests/`
 - `client/` React 19 + Vite PWA, plain JS. `src/lib/` sync engine (`sync.js`), upload queue (`media.js`), IndexedDB (`db.js`), `age.js`; `src/ui/` screens; `tests/` vitest against the real server
-- `ops/` `bj_backup.py` (backup/watch/restore/forget), `bj_export.py` (plain export). Python stdlib only
+- `ops/` `bj_backup.py` (backup/watch/restore/forget), `bj_export.py` (plain export), `bj_firestore_adapter.py` + `bj_import.py` (migration: check/run/reconcile, idempotent). Python stdlib only
 - `infra/` `ansible/` (roles `vps`, `macmini`; templates are the single source for Caddy/HAProxy/launchd), `tests/`, `docs/runbook.md`, `docs/recovery.md`
 - `tools/` `get-pocketbase.sh`, `get-caddy.sh` (binaries are not committed). `scripts/check.sh` runs the tests
 
 ## Run the tests (use this, it prints a few lines; full logs go to /tmp/bj-check/<suite>.log: grep them, never print them whole)
-    scripts/check.sh               backend (75) + client (43), about 1 minute
+    scripts/check.sh               backend (79) + client (53), about 1 minute
     scripts/check.sh infra         config checks (22), mount guard (7), network chain (31)
-    scripts/check.sh ops "restore|export"   the slow backup suite in parts; groups: nightly, consistency, killed, failures, alert levels, restore on, retention, export (each part under 3 minutes)
+    scripts/check.sh ops "restore|export"   the slow backup suite in parts; groups: nightly, consistency, killed, failures, alert levels, restore on, retention, export, import (each part under 3 minutes)
 Needs: node 22, python3, ffmpeg, ImageMagick, exiftool, restic, sqlite3, haproxy, wireguard-tools, ansible-core; `tools/get-pocketbase.sh` and `tools/get-caddy.sh` run once.
 
 ## Behaviour that matters (do not break; each has a test)
@@ -28,6 +28,7 @@ Needs: node 22, python3, ffmpeg, ImageMagick, exiftool, restic, sqlite3, haproxy
 - Entry sync is atomic and idempotent (`/api/bj/entries/sync`, idempotency key); a stale edit becomes a conflict version, never an overwrite. Date-only fields are text `YYYY-MM-DD`. Measurements need a unit suffix (`weight_kg`).
 - Media: stored only after size and SHA-256 match; server makes its own metadata-stripped copies and refuses any with GPS/device tags. Max 5 GB/file. Protected-file tokens last 1 h; sign-in 30 days.
 - Backup marks "offsite protected" only for files in a verified snapshot (`/api/bj/backup/mark`). Purge removes 30-day-old trash only if a verified backup holds it, none is running, and the last one is under 48 h old; it is a dry run unless `BJ_PURGE_ENABLE=1`. Alerts: 18 h warning, 24 h critical.
+- Migration: `/api/bj/import/entry` (superuser) keeps the original author and written-on time and is idempotent by client_id; a repeat import never changes an existing entry. Diagnostics (start-up timings, upload outcomes) stay on the phone (`client/src/lib/diagnostics.js`).
 - Admin UI and superuser API are reachable only from the home network and the tunnel; the internet sees only the app's API.
 
 ## Pitfalls already hit (save yourself the time)

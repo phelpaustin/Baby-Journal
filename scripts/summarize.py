@@ -19,12 +19,15 @@ if tests is None:  # vitest
     passed = num(r"Tests\s+(?:\d+ failed \| )?(\d+) passed")
     failed = num(r"Tests\s+(\d+) failed") or 0
     tests = (passed or 0) + failed
+skipped, cancelled = num(r"ℹ skipped (\d+)") or 0, num(r"ℹ cancelled (\d+)") or 0
 complete = tests is not None and (passed is not None)
-status = "PASS" if complete and not failed else "FAIL" if complete else "INCOMPLETE"
+# a run only passes if every test either passed or was deliberately skipped (cancelled tests are failures)
+ok_all = complete and not failed and not cancelled and (passed or 0) + skipped == tests and (passed or 0) > 0
+status = "PASS" if ok_all else "FAIL" if complete else "INCOMPLETE"
 extra = ""
 if not complete:
     extra = " (no summary: crashed or timed out)"
-print("%-8s %-10s %s/%s%s%s" % (name, status, passed if passed is not None else "?", tests if tests is not None else "?", extra, ("   log: " + log) if log and status != "PASS" else ""))
+print("%-8s %-10s %s/%s%s%s%s" % (name, status, passed if passed is not None else "?", tests if tests is not None else "?", (" (%d skipped)" % skipped) if skipped else "", extra, ("   log: " + log) if log and status != "PASS" else ""))
 
 if status == "PASS":
     sys.exit(0)

@@ -3,6 +3,8 @@ import { useSession, useLoader } from "./context.js";
 import { useJournalInfo, JournalHeader } from "./journal.jsx";
 import { pb } from "../lib/pb.js";
 import { errorMessage, formatBytes } from "../lib/util.js";
+import { diag } from "../lib/diag.js";
+import { buildReport, reportText, deviceInfo } from "../lib/diagnostics.js";
 
 export function Settings({ jid, signOut }) {
   const { data, persisted, db } = useSession();
@@ -45,8 +47,17 @@ export function Settings({ jid, signOut }) {
     try { await pb.send("/api/bj/me/sign-out-everywhere", { method: "POST" }); pb.authStore.clear(); } catch (err) { setMsg(errorMessage(err)); }
   };
 
+  const [diagTick, setDiagTick] = useState(0);
+  const report = buildReport({ perf: diag.runs(), uploads: diag.events(), device: deviceInfo({ persisted }) });
+  const copyReport = async () => {
+    const text = reportText(report) + "\n\n" + JSON.stringify(report);
+    try { await navigator.clipboard.writeText(text); setMsg("Diagnostics copied. Paste them into a message to the journal owner."); }
+    catch (_) { window.prompt("Copy this text and send it to the journal owner:", text); }
+  };
+  const f = (n) => (n === null || n === undefined ? "n/a" : n + " ms");
+
   return (
-    <div className="page">
+    <div className="page" data-tick={diagTick}>
       <JournalHeader jid={jid} journal={info.journal} active="Settings" />
       {info.isOwner && (
         <form className="card" onSubmit={save}>
@@ -71,6 +82,23 @@ export function Settings({ jid, signOut }) {
           </p>
         ) : <p className="muted">Backup status is not available right now.</p>}
         {info.isOwner && <><button onClick={exportJournal}>Download a copy of the journal text (JSON)</button><p className="muted small">Entries, history and people. Photos and videos are kept in the backup.</p></>}
+      </section>
+
+      <section className="card" aria-label="Pilot diagnostics">
+        <h2>Pilot diagnostics</h2>
+        <p className="muted small">Timings and upload results stay on this phone. Copy them and send them to the journal owner.</p>
+        {["cold", "warm"].map((s) => (
+          <p key={s} className="small">
+            <strong>{s === "cold" ? "First open" : "Opened from the home screen"}</strong>: {report.startup[s].runs} run(s), median {f(report.startup[s].timeline_median_ms)}, worst {f(report.startup[s].timeline_worst_ms)}
+            {report.startup[s].timeline_pass === null ? "" : report.startup[s].timeline_pass ? " (meets target)" : " (misses target)"}
+          </p>
+        ))}
+        <p className="small"><strong>Uploads</strong>: {report.uploads.files} file(s), {report.uploads.done} done, {report.uploads.failed} failed, {report.uploads.restarted} restarted.
+          {report.uploads.resumable_uploads_required ? " Resumable uploads are required by the pilot thresholds." : ""}</p>
+        <div className="row">
+          <button onClick={copyReport}>Copy diagnostics</button>
+          <button onClick={() => { diag.clear(); setDiagTick((t) => t + 1); }}>Clear</button>
+        </div>
       </section>
 
       <section className="card">

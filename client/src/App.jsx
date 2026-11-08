@@ -5,6 +5,7 @@ import { createEngine } from "./lib/sync.js";
 import { createMediaQueue } from "./lib/media.js";
 import { createData } from "./lib/data.js";
 import { forgetFileToken } from "./lib/files.js";
+import { diag } from "./lib/diag.js";
 import { SessionCtx, useHash, makeBus, go } from "./ui/context.js";
 import { Login, Join } from "./ui/Auth.jsx";
 import { Home } from "./ui/Home.jsx";
@@ -32,6 +33,7 @@ function useSessionObjects(user) {
       const queue = createMediaQueue({
         pb, db, userId: user.id, engine,
         onUploaded: async () => bus.emit("data-changed"),
+        onAttempt: (ev) => diag.recordUpload(ev),
       });
       const data = createData({ pb, db });
       await queue.refresh();

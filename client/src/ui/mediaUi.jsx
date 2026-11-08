@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { pb } from "../lib/pb.js";
 import { fileToken, fileUrl } from "../lib/files.js";
+import { diag } from "../lib/diag.js";
 
 // A protected file URL: needs a token, so it is built after the token arrives. The URL is
 // kept once built, so an image that is already shown never flickers when the token rotates.
@@ -23,7 +24,7 @@ export function MediaThumb({ media, size = "320x0", onClick, alt }) {
   const preparing = media.derive_status !== "ready" && !media[field];
   return (
     <button className="thumb" onClick={onClick} aria-label={alt || media.caption || (media.kind === "video" ? "Video" : "Photo")}>
-      {url ? <img src={url} alt={media.caption || ""} loading="lazy" /> : <span className="muted small">{preparing ? "Preparing…" : "Offline"}</span>}
+      {url ? <img src={url} alt={media.caption || ""} loading="lazy" onLoad={() => diag.markThumbnail()} /> : <span className="muted small">{preparing ? "Preparing…" : "Offline"}</span>}
       {media.kind === "video" && <span className="play" aria-hidden="true">▶</span>}
     </button>
   );

@@ -12,7 +12,8 @@ Build order follows section 15 of that document.
 | 3. Offline-first PWA | Client built (`client/`): sign-in, invites, timeline, entry editor, photo and video upload queue, milestones, people, settings, conflict screen. Tested in a simulated browser against the real server, not yet on real phones. |
 | 4. Network and security | Ansible code for the VPS and the Mac mini, plus a runbook. Configs validated with the real tools and the whole chain tested locally (31 tests). Not yet run on a real VPS or Mac. |
 | 5. Backups and recovery | Backup, verify, alert, restore, plain export, trash purge, integrity check and account recovery are built and tested against a real restic repository and a restored second server. Mount guard tested. Not yet run against Google Drive or on the Mac. |
-| 6 to 7 | Not started. |
+| 6. Migration and pilot | Importer (check, run, reconcile; idempotent and resumable), Firestore adapter, in-app pilot diagnostics and the pilot kit are built and tested. The real import needs sample Firestore documents from you; the pilot needs real phones. | 
+| 7 | Not started. |
 
 ## Run the tests
 
@@ -159,3 +160,11 @@ See `infra/docs/recovery.md`. It is written to be read by a co-owner in an emerg
 Server routes added: `POST /api/bj/backup/mark` (superuser: flags exactly the files a verified snapshot holds), `POST /api/bj/maintenance/purge` and `POST /api/bj/maintenance/reconcile` (superuser, dry run by default). `POST /api/bj/backup/record` now only records the run; it no longer marks anything by itself.
 
 Decisions to confirm: alert channels, whether preview copies go into the backup (default: no, they are re-made), and who runs `forget` (it needs delete rights on the repository, so it belongs on a second machine).
+
+## Migration and pilot (build step 6)
+
+See `infra/docs/migration.md` (what to send me, step by step, bundle format) and `infra/docs/pilot.md` (gates, measurements, go/no-go).
+
+- `ops/bj_firestore_adapter.py` turns a Firestore JSON export plus the downloaded Drive files into a plain bundle, using a mapping file (`ops/import-mapping.example.json`). It converts the four Firestore timestamp shapes, puts events on the right calendar day in your time zone, converts units, and warns about everything it cannot map.
+- `ops/bj_import.py check | run | reconcile`: `check` validates offline; `run` loads entries with their original author and written-on time (server route `/api/bj/import/entry`, superuser only) and uploads the files with checksums; it can be interrupted and repeated, and never changes an existing entry; `reconcile` proves counts, every field and every file's SHA-256 against the source.
+- The app records start-up timings and upload outcomes locally (Settings, Pilot diagnostics) and copies a plain-text report, so the pilot's thresholds (start-up targets, the 2 percent and 1 GB rules for resumable uploads) are measured, not guessed. Nothing is sent anywhere.

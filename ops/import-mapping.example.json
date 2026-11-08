@@ -1,0 +1,23 @@
+{
+  "_help": "Field names are those of the OLD app's Firestore documents. Change them to match; nothing else needs editing.",
+  "source": "firestore-export",
+  "timezone": "Europe/Stockholm",
+  "journal": { "name": "Ophelia Mikyla", "emoji": "🍼", "dob": "2026-10-18", "due_date": "2026-10-10" },
+  "collections": { "entries": "events", "users": "users" },
+  "entry": {
+    "id": "id", "date": "date", "type": "category", "title": "title", "text": "notes", "milestones": "tags",
+    "author": "createdBy", "created": "createdAt", "updated": "updatedAt", "deleted": "deletedAt", "media": "photos"
+  },
+  "user": { "id": "id", "name": "displayName", "email": "email" },
+  "media_item": { "id": "driveFileId", "name": "name", "caption": "caption", "taken": "takenAt", "kind": "type" },
+  "type_map": { "photo": "memory", "note": "memory", "weight": "growth", "height": "growth", "doctor": "appointment", "vaccine": "vaccine", "sleep": "sleep", "feed": "feeding" },
+  "default_type": "memory",
+  "milestone_map": { "First smile": "first_smile", "Rolled over": "rolled_over", "First tooth": "first_tooth" },
+  "values": {
+    "weight_kg": { "field": "weightGrams", "scale": 0.001 },
+    "length_cm": { "field": "lengthCm" },
+    "head_circumference_cm": { "field": "headCm" }
+  },
+  "drive_dir": "drive-downloads",
+  "drive_file": "{id}"
+}

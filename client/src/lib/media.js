@@ -76,7 +76,7 @@ export async function fetchTransport({ url, token, fields, file, filename, onPro
 export const defaultTransport = typeof XMLHttpRequest !== "undefined" && typeof window !== "undefined" ? xhrTransport : fetchTransport;
 
 // -------------------------------------------------------------------- queue
-export function createMediaQueue({ pb, db, userId, engine, transport = defaultTransport, online = () => (typeof navigator === "undefined" ? true : navigator.onLine), onUploaded, schedule = true }) {
+export function createMediaQueue({ pb, db, userId, engine, transport = defaultTransport, online = () => (typeof navigator === "undefined" ? true : navigator.onLine), onUploaded, onAttempt, schedule = true }) {
   const listeners = new Set();
   let running = null;
   let timer = null;
@@ -113,12 +113,15 @@ export function createMediaQueue({ pb, db, userId, engine, transport = defaultTr
     await refresh();
   }
 
+  const note = (item, outcome, started) => { if (onAttempt) onAttempt({ id: item.client_id, size: item.size, kind: item.kind, outcome, ms: Date.now() - started }); };
+
   async function uploadOne(item) {
     const entryId = await engine.serverEntryId(item.journal, item.entry_client_id);
     if (!entryId) { await update(item, { status: "waiting_entry" }); return "wait"; }
     // Browser storage can lose or damage a file (low disk space, Safari quirks). Never hash or
     // upload something that no longer matches what the person picked.
     if (!(item.file && typeof item.file.slice === "function") || item.file.size !== item.size) {
+      note(item, "failed", Date.now());
       await update(item, { status: "failed", error: "This phone no longer has an intact copy of the file. Add it again from your photo library." });
       return "failed";
     }
@@ -128,6 +131,7 @@ export function createMediaQueue({ pb, db, userId, engine, transport = defaultTr
       await db.putMedia(item);
     }
     await update(item, { status: "uploading", error: "" });
+    const started = Date.now();
     let res;
     try {
       res = await transport({
@@ -145,25 +149,29 @@ export function createMediaQueue({ pb, db, userId, engine, transport = defaultTr
         },
       });
     } catch (err) {
+      note(item, "network", started);
       await update(item, { status: "queued", error: "Connection lost. It will resume automatically." });
       return "network";
     }
     delete progress[item.client_id];
     const msg = (res.json && res.json.message) || "";
     if (res.status === 200 && res.json && res.json.media && res.json.media.status === "stored") {
+      note(item, "done", started);
       await db.deleteMedia(item.client_id); // the server confirmed: only now is the local copy dropped
       await refresh();
       if (onUploaded) await onUploaded(item, res.json.media);
       return "done";
     }
     if (res.status === 422 && /intact|checksum/i.test(msg) && item.attempts + 1 < MAX_CHECKSUM_RETRIES) {
+      note(item, "retry", started);
       await update(item, { status: "queued", attempts: item.attempts + 1, error: "The upload arrived damaged. Trying again." });
       return "retry";
     }
     if (res.status === 401) { await update(item, { status: "queued" }); return "auth"; }
-    if (res.status === 507) { await update(item, { status: "paused", error: msg || "The server is almost out of disk space. Your file is safe on this phone." }); return "full"; }
-    if (res.status === 429 || res.status >= 500) { await update(item, { status: "queued", error: msg }); return "network"; }
+    if (res.status === 507) { note(item, "full", started); await update(item, { status: "paused", error: msg || "The server is almost out of disk space. Your file is safe on this phone." }); return "full"; }
+    if (res.status === 429 || res.status >= 500) { note(item, "network", started); await update(item, { status: "queued", error: msg }); return "network"; }
     // 403, 404, 409, other 4xx: retrying cannot help. Keep the file so nothing is lost.
+    note(item, "failed", started);
     await update(item, { status: "failed", error: msg || "The server refused this file." });
     return "failed";
   }

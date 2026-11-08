@@ -281,3 +281,31 @@ describe("photos in the browser", () => {
     }
   });
 });
+
+describe("pilot diagnostics screen", () => {
+  test("Settings shows the timings and upload results kept on the phone, and copies a plain-text report", async () => {
+    const runs = Array.from({ length: 10 }, (_, i) => ({ at: "2026-11-0" + (i % 9 + 1) + "T10:00:0" + i, scenario: "warm", timeline_ms: 1200 + i * 50, thumbs_ms: 2000, thumbs_first_ms: 1500, thumbs: 4 }));
+    localStorage.setItem("bj.perf.runs", JSON.stringify(runs));
+    localStorage.setItem("bj.diag.events", JSON.stringify([
+      { id: "a", size: 5e6, kind: "image", outcome: "done", net: "wifi" },
+      { id: "b", size: 2e9, kind: "video", outcome: "network", net: "cellular" },
+      { id: "b", size: 2e9, kind: "video", outcome: "network", net: "cellular" },
+    ]));
+    const written = [];
+    Object.defineProperty(window.navigator, "clipboard", { configurable: true, value: { writeText: async (t) => written.push(t) } });
+    await signIn(owner);
+    window.location.hash = `/j/${journal.id}/settings`;
+    const card = (await screen.findByLabelText("Pilot diagnostics"));
+    expect(card.textContent).toMatch(/Opened from the home screen: 10 run\(s\), median 1425 ms, worst 1650 ms \(meets target\)/);
+    expect(card.textContent).toMatch(/2 file\(s\), 1 done, 0 failed, 1 restarted/);
+    expect(card.textContent).toMatch(/Resumable uploads are required/);
+    fireEvent.click(within(card).getByRole("button", { name: "Copy diagnostics" }));
+    await waitFor(() => expect(written.length).toBe(1));
+    expect(written[0]).toMatch(/^Baby Journal pilot diagnostics/);
+    expect(written[0]).toMatch(/RESUMABLE UPLOADS ARE REQUIRED/);
+    expect(written[0]).toContain('"schema"'.slice(0, 0) + '"startup"');
+    fireEvent.click(within(card).getByRole("button", { name: "Clear" }));
+    await waitFor(() => expect(card.textContent).toMatch(/0 run\(s\)/));
+    expect(localStorage.getItem("bj.perf.runs")).toBe("[]");
+  });
+});
