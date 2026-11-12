@@ -499,6 +499,81 @@ group("restore on a second machine, and recovery", () => {
   });
 });
 
+// ====================================================================== the scripted restore drill
+group("restore drill (scripted)", () => {
+  const drillEnv = (name, extra = {}) => env(name, { BJ_PB_BIN: PB_BIN, BJ_BACKEND_DIR: BACKEND, ...extra });
+  const drill = (e) => spawnSync("python3", [BACKUP, "drill"], { env: e, encoding: "utf8" });
+  const report = (e) => { const f = readdirSync(e.BJ_STATE_DIR).filter((x) => /^drill-\d+\.json$/.test(x)).sort().pop(); return JSON.parse(readFileSync(join(e.BJ_STATE_DIR, f), "utf8")); };
+
+  test("restore, boot a server on the restored data, reconcile, export and verify: one command, recorded and reported", async () => {
+    const e = drillEnv("drill-ok");
+    initRepo(e);
+    assert.equal(backup(e).status, 0);
+    const before = lastAlerts().length;
+    const r = drill(e);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const rep = report(e);
+    assert.equal(rep.ok, true, JSON.stringify(rep));
+    assert.deepEqual(Object.keys(rep.steps), ["restore", "start", "reconcile", "export"]);
+    assert.ok(rep.files >= 4 && rep.entries >= 4);
+    assert.ok(rep.derived_regenerated >= 4, "the preview copies were rebuilt on the restored server");
+    assert.ok(rep.export.entries >= 4 && rep.export.files >= 4);
+    assert.match(lastAlerts().slice(before).join("\n"), /info Restore drill passed/);
+    assert.ok(!existsSync(join(e.BJ_STATE_DIR, "drill-work")), "the temporary restored copy is removed");
+    // only real PocketBase processes count (a shell whose command line merely mentions the folder does not)
+    const left = sh("ps", ["-eo", "args="]).split("\n").filter((l) => /^\S*pocketbase serve /.test(l) && l.includes("drill-work/pb_data")).join("\n");
+    assert.equal(left, "", "the temporary server is stopped, but found: " + left);
+  });
+
+  test("a damaged original that the nightly sample missed makes the drill fail, record why, and alert critically", async () => {
+    const x = await newEntry("Drill damage");
+    const m = await upload(x.entry, photo("drill-damage"));
+    const orig = (await api("GET", `/api/collections/media_originals/records?filter=${encodeURIComponent(`media="${m.id}"`)}`, { token: admin })).data.items[0];
+    const path = join(PB_DATA, "storage", orig.collectionId, orig.id, orig.file);
+    const good = readFileSync(path); const bad = Buffer.from(good); bad[90] ^= 0xff; writeFileSync(path, bad);
+    try {
+      const e = drillEnv("drill-bad", { BJ_VERIFY_SAMPLE_FILES: "0" });
+      initRepo(e);
+      assert.equal(backup(e).status, 0);
+      const before = lastAlerts().length;
+      const r = drill(e);
+      assert.equal(r.status, 1, r.stdout + r.stderr);
+      const rep = report(e);
+      assert.equal(rep.ok, false);
+      assert.match(rep.problems.join(" "), /did not verify.*checksum mismatch/);
+      assert.match(lastAlerts().slice(before).join("\n"), /critical The restore drill FAILED/);
+      assert.ok(!existsSync(join(e.BJ_STATE_DIR, "drill-work")));
+    } finally { writeFileSync(path, good); }
+  });
+
+  test("export --verify passes a good export and names each kind of damage", () => {
+    const snap = join(W, "verify-snap.db");
+    sh("python3", ["-c", `import sqlite3;s=sqlite3.connect('file:${PB_DATA}/data.db?mode=ro',uri=True);d=sqlite3.connect('${snap}');s.backup(d);d.close()`]);
+    const cid = sh("sqlite3", [snap, "SELECT id FROM _collections WHERE name='media_originals'"]).trim();
+    const out = join(W, "verify-export"); rmSync(out, { recursive: true, force: true });
+    assert.equal(spawnSync("python3", [EXPORT, "--db", snap, "--originals", join(PB_DATA, "storage", cid), "--out", out], { encoding: "utf8" }).status, 0);
+    const verify = () => spawnSync("python3", [EXPORT, "--verify", out], { encoding: "utf8" });
+    assert.equal(verify().status, 0, verify().stderr);
+    const root = join(out, readdirSync(out)[0]);
+    const find = (dir, re) => readdirSync(dir, { withFileTypes: true }).flatMap((d) => (d.isDirectory() ? find(join(dir, d.name), re) : re.test(d.name) ? [join(dir, d.name)] : []));
+    const photo1 = find(join(root, "entries"), /^photo-01\./)[0];
+    const keep = readFileSync(photo1);
+    rmSync(photo1);
+    let r = verify(); assert.equal(r.status, 1); assert.match(r.stderr, /is missing/); assert.match(r.stderr, /checksums\.sha256 lists a missing file/);
+    writeFileSync(photo1, keep);
+    const b = Buffer.from(keep); b[40] ^= 0xff; writeFileSync(photo1, b);
+    r = verify(); assert.equal(r.status, 1); assert.match(r.stderr, /checksum differs/);
+    writeFileSync(photo1, keep);
+    const readme = readFileSync(join(root, "README.md")); rmSync(join(root, "README.md"));
+    r = verify(); assert.match(r.stderr, /README\.md is missing/);
+    writeFileSync(join(root, "README.md"), readme);
+    const idx = readFileSync(join(root, "index.html"), "utf8"); writeFileSync(join(root, "index.html"), idx.replace(/entries\/[^']+entry\.md/, "entries/nowhere/entry.md"));
+    r = verify(); assert.match(r.stderr, /index\.html links to a missing file/);
+    writeFileSync(join(root, "index.html"), idx);
+    assert.equal(verify().status, 0, "restored to good: passes again");
+  });
+});
+
 // ====================================================================== retention
 group("retention policy", () => {
   test("daily 14, weekly 8, monthly 12: the dry run lists what would go and changes nothing; the real run keeps the recent days", async () => {

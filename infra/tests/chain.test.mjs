@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import https from "node:https";
 import net from "node:net";
 import tls from "node:tls";
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { readFileSync, existsSync, mkdirSync, writeFileSync, statSync, readdirSync, appendFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
@@ -376,5 +376,58 @@ describe("a 1 GB video upload and seeking, end to end", { timeout: 1_200_000 }, 
     assert.equal(origTail.status, 206);
     assert.equal(origTail.body.length, 4096);
     assert.ok(origTail.body.equals(readFileSync(big).subarray(size - 4096)), "tail of the original differs");
+  });
+});
+
+// ================================================================ I. the uptime probe that runs on the VPS
+describe("uptime probe (VPS side)", () => {
+  const dir = join(E.WORKDIR, "uptime");
+  const alertLog = join(dir, "alerts.log");
+  const script = join(E.WORKDIR, "infra", "rendered", "bj-uptime-check.sh");
+  const probe = (url, state) => spawnSync("bash", [script], { env: { ...process.env, UPTIME_URL: url, UPTIME_STATE: state, CURL_CA_BUNDLE: E.CA_FILE }, encoding: "utf8" });
+  const alerts = () => (existsSync(alertLog) ? readFileSync(alertLog, "utf8").trim().split("\n").filter(Boolean) : []);
+  const GOOD = `https://${SNI}:${E.CHAIN_PORT}/api/health`;
+  const DOWN = `https://${SNI}:9441/api/health`; // nothing listens there: the name does not resolve, like an unreachable home
+
+  before(() => {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync("/tmp/bj-uptime-alert.sh", `#!/bin/bash\necho "$1 $2" >> "${alertLog}"\n`, { mode: 0o755 });
+  });
+
+  test("it checks the public address through the whole chain; a healthy journal raises nothing", () => {
+    const state = join(dir, "s1");
+    for (let i = 0; i < 4; i++) assert.equal(probe(GOOD, state).status, 0);
+    assert.equal(readFileSync(state, "utf8").trim(), "0");
+    assert.deepEqual(alerts(), []);
+  });
+
+  test("three failures in a row raise exactly one critical alert; more failures do not repeat it; recovery is announced once", () => {
+    const state = join(dir, "s2");
+    probe(DOWN, state); probe(DOWN, state);
+    assert.deepEqual(alerts(), [], "two failures are not enough");
+    probe(DOWN, state);
+    assert.equal(alerts().length, 1);
+    assert.match(alerts()[0], /^critical The journal does not answer at .*3 times in a row\)\. Check the Mac, the tunnel and the home internet/);
+    probe(DOWN, state); probe(DOWN, state);
+    assert.equal(alerts().length, 1, "no repeat while it stays down");
+    probe(GOOD, state);
+    assert.equal(alerts().length, 2);
+    assert.match(alerts()[1], /^info The journal answers again/);
+    probe(GOOD, state);
+    assert.equal(alerts().length, 2, "no second recovery notice");
+  });
+
+  test("two failures then a success reset the count, so a brief blip never alerts", () => {
+    const state = join(dir, "s3");
+    const before = alerts().length;
+    probe(DOWN, state); probe(DOWN, state); probe(GOOD, state); probe(DOWN, state); probe(DOWN, state); probe(GOOD, state);
+    assert.equal(alerts().length, before);
+  });
+
+  test("a response that is not a success (404 from the journal) counts as down", () => {
+    const state = join(dir, "s4");
+    const before = alerts().length;
+    const rs = [0, 1, 2].map(() => probe(`https://${SNI}:${E.CHAIN_PORT}/api/collections/no_such_collection/records`, state));
+    assert.equal(alerts().length, before + 1, "state=" + readFileSync(state, "utf8") + " status=" + rs.map((r) => r.status) + " err=" + rs[0].stderr + " alerts=" + alerts().join("|"));
   });
 });

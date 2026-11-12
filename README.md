@@ -13,7 +13,7 @@ Build order follows section 15 of that document.
 | 4. Network and security | Ansible code for the VPS and the Mac mini, plus a runbook. Configs validated with the real tools and the whole chain tested locally (31 tests). Not yet run on a real VPS or Mac. |
 | 5. Backups and recovery | Backup, verify, alert, restore, plain export, trash purge, integrity check and account recovery are built and tested against a real restic repository and a restored second server. Mount guard tested. Not yet run against Google Drive or on the Mac. |
 | 6. Migration and pilot | Importer (check, run, reconcile; idempotent and resumable), Firestore adapter, in-app pilot diagnostics and the pilot kit are built and tested. The real import needs sample Firestore documents from you; the pilot needs real phones. | 
-| 7 | Not started. |
+| 7. Operate | Monitor (disk, SSD, drive health, certificate, tunnel, Time Machine), VPS uptime probe, scripted quarterly restore drill, capacity projection and monthly report, upgrade rehearsals, runbooks, yearly checklist and a decision log are built and tested. None has run on the real Mac or VPS yet. |
 
 ## Run the tests
 
@@ -168,3 +168,13 @@ See `infra/docs/migration.md` (what to send me, step by step, bundle format) and
 - `ops/bj_firestore_adapter.py` turns a Firestore JSON export plus the downloaded Drive files into a plain bundle, using a mapping file (`ops/import-mapping.example.json`). It converts the four Firestore timestamp shapes, puts events on the right calendar day in your time zone, converts units, and warns about everything it cannot map.
 - `ops/bj_import.py check | run | reconcile`: `check` validates offline; `run` loads entries with their original author and written-on time (server route `/api/bj/import/entry`, superuser only) and uploads the files with checksums; it can be interrupted and repeated, and never changes an existing entry; `reconcile` proves counts, every field and every file's SHA-256 against the source.
 - The app records start-up timings and upload outcomes locally (Settings, Pilot diagnostics) and copies a plain-text report, so the pilot's thresholds (start-up targets, the 2 percent and 1 GB rules for resumable uploads) are measured, not guessed. Nothing is sent anywhere.
+
+## Operating it (build step 7)
+
+See `infra/docs/operations.md` (what runs by itself, what to do for each alert, runbooks, the yearly checklist, hardware lifecycle) and `docs/decisions.md` (the decision log, with the open items).
+
+- `ops/bj_monitor.py check` runs every 10 minutes on the Mac: PocketBase health, SSD present, disk 70 % / 85 %, drive health, certificate expiry (21 / 7 days), WireGuard handshake age, Time Machine age. It alerts once per change, reminds every 6 hours while critical, and says when things return to normal. `capacity` projects the months until the disk is 70 % and 85 % full; `report` writes the one-page monthly report with the items that need a decision marked **ACT**.
+- The VPS runs its own uptime probe every 2 minutes against the public address and alerts after three failures in a row, so it still works when the Mac or the house is down.
+- `bj_backup.py drill` is the quarterly restore check, scripted: restore from the offsite repository, boot a server on the restored data, rebuild the previews, reconcile, export, verify the export, and record the result (alert on failure).
+- `bj_export.py --verify FOLDER` checks an export (structure, links, every checksum).
+- `scripts/versions.sh` shows pinned versus latest; `scripts/upgrade-pocketbase.sh` and `scripts/upgrade-caddy.sh` rehearse an upgrade against the full test suites without touching anything real. Caddy 2.11.9 passes all 35 network tests; the pin is still 2.11.8 until you decide.

@@ -9,4 +9,4 @@ export PB_URL="http://127.0.0.1:$PORT" PB_DATA="$PB_TEST_DIR" OPS_DIR="$HERE/.."
 PB=$!
 trap 'kill $PB 2>/dev/null; wait $PB 2>/dev/null' EXIT
 for i in $(seq 1 100); do curl -sf "$PB_URL/api/health" >/dev/null && break; sleep 0.2; done
-node --test --test-concurrency=1 --test-reporter=${REPORTER:-spec} ${ONLY_FILE:-"$HERE"/backup.test.mjs "$HERE"/import.test.mjs} "$@"
+node --test --test-concurrency=1 --test-reporter=${REPORTER:-spec} ${ONLY_FILE:-"$HERE"/backup.test.mjs "$HERE"/import.test.mjs "$HERE"/monitor.test.mjs} "$@"

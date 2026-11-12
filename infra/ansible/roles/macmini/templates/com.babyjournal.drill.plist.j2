@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.babyjournal.drill</string>
+  <key>UserName</key><string>{{ bj_user }}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string><string>{{ bj_root }}/bin/bj_backup.py</string>
+    <string>--env-file</string><string>{{ bj_root }}/etc/backup.env</string><string>drill</string>
+  </array>
+  <!-- quarterly: restore from the offsite repository, start a server on it, reconcile, export, verify -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Month</key><integer>1</integer><key>Day</key><integer>3</integer><key>Hour</key><integer>5</integer></dict>
+    <dict><key>Month</key><integer>4</integer><key>Day</key><integer>3</integer><key>Hour</key><integer>5</integer></dict>
+    <dict><key>Month</key><integer>7</integer><key>Day</key><integer>3</integer><key>Hour</key><integer>5</integer></dict>
+    <dict><key>Month</key><integer>10</integer><key>Day</key><integer>3</integer><key>Hour</key><integer>5</integer></dict>
+  </array>
+  <key>Nice</key><integer>10</integer>
+  <key>LowPriorityIO</key><true/>
+  <key>StandardOutPath</key><string>{{ caddy_log_dir }}/drill.log</string>
+  <key>StandardErrorPath</key><string>{{ caddy_log_dir }}/drill.log</string>
+</dict>
+</plist>

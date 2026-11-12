@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.babyjournal.report</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string><string>-c</string>
+    <string>/usr/bin/python3 {{ bj_root }}/bin/bj_monitor.py --env-file {{ bj_root }}/etc/backup.env capacity; /usr/bin/python3 {{ bj_root }}/bin/bj_monitor.py --env-file {{ bj_root }}/etc/backup.env report</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>BJ_STATE_DIR</key><string>{{ bj_state_dir }}/monitor</string>
+    <key>BJ_DRILL_DIR</key><string>{{ bj_state_dir }}</string>
+  </dict>
+  <!-- the 2nd of every month: the capacity projection and the one-page "monthly look" -->
+  <key>StartCalendarInterval</key>
+  <dict><key>Day</key><integer>2</integer><key>Hour</key><integer>6</integer><key>Minute</key><integer>0</integer></dict>
+  <key>StandardOutPath</key><string>{{ caddy_log_dir }}/report.log</string>
+  <key>StandardErrorPath</key><string>{{ caddy_log_dir }}/report.log</string>
+</dict>
+</plist>

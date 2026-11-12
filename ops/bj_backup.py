@@ -4,6 +4,7 @@
   bj_backup.py backup    nightly: consistent snapshot -> one restic snapshot -> verify -> mark protected
   bj_backup.py watch     every 30 minutes: alert when the last verified backup is too old or failed
   bj_backup.py restore   rebuild a pb_data folder from the offsite repository and verify every file
+  bj_backup.py drill     quarterly restore check: restore, start a server on it, reconcile, export, verify
   bj_backup.py forget    apply the retention policy (dry run unless --apply)
 
 Settings come from the environment, or from a KEY=VALUE file given with --env-file:
@@ -18,6 +19,7 @@ Settings come from the environment, or from a KEY=VALUE file given with --env-fi
   BJ_CHECK_SUBSET=5%     share of the repository data that restic re-reads after every backup
   BJ_LOCAL_SNAPSHOT_DAYS=14  how long local database snapshots are kept (Time Machine copies them)
   BJ_RESTIC_BIN=restic
+  BJ_PB_BIN, BJ_BACKEND_DIR   for `drill`: the PocketBase binary and the folder with pb_migrations and pb_hooks
 """
 import argparse
 import contextlib
@@ -566,6 +568,105 @@ def cmd_restore(cfg, snapshot, target, verify):
     return 0 if not problems else 1
 
 
+# -------------------------------------------------------------------- drill
+def cmd_drill(cfg, snapshot, keep):
+    """The quarterly restore check, scripted: restore, start a server on the restored data, reconcile,
+    export, verify the export. Result goes to <state>/drill-YYYYMMDD.json and failures raise an alert."""
+    import socket
+    log = Logger(cfg)
+    started = utcnow()
+    result = {"started_at": iso(started), "ok": False, "snapshot": snapshot, "steps": {}, "problems": []}
+    work = cfg.path("drill-work")
+    shutil.rmtree(work, ignore_errors=True)
+    proc = None
+    t = time.time()
+
+    def step(name):
+        nonlocal t
+        result["steps"][name] = round(time.time() - t, 1)
+        t = time.time()
+
+    try:
+        pb_bin = cfg.need("BJ_PB_BIN")
+        backend = cfg.need("BJ_BACKEND_DIR")
+        env = dict(cfg.env)
+        env["BJ_DATA_DIR"], env["BJ_STATE_DIR"] = work, os.path.join(work, ".state")
+        rc = cmd_restore(Config(env), snapshot, work, "full")
+        step("restore")
+        rep = json.load(open(os.path.join(work, "restore-report.json")))
+        result["files"] = rep["files"]
+        if rc != 0:
+            raise Fail("the restore did not verify: %s" % "; ".join(rep["problems"][:3]))
+
+        with socket.socket() as sck:
+            sck.bind(("127.0.0.1", 0))
+            port = sck.getsockname()[1]
+        base = "http://127.0.0.1:%d" % port
+        proc = subprocess.Popen([pb_bin, "serve", "--dir", os.path.join(work, "pb_data"), "--migrationsDir", os.path.join(backend, "pb_migrations"),
+                                 "--hooksDir", os.path.join(backend, "pb_hooks"), "--http", "127.0.0.1:%d" % port], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for _ in range(150):
+            try:
+                urllib.request.urlopen(base + "/api/health", timeout=2).read()
+                break
+            except Exception:
+                if proc.poll() is not None:
+                    raise Fail("the restored server exited immediately")
+                time.sleep(0.2)
+        else:
+            raise Fail("the restored server did not start")
+        step("start")
+        drill_cfg = Config({**env, "BJ_PB_URL": base})
+        pb = PB(drill_cfg)
+        pb.login()
+        fix = pb.call("POST", "/api/bj/maintenance/reconcile", {"dry_run": False, "regenerate": True})
+        again = pb.call("POST", "/api/bj/maintenance/reconcile", {})
+        step("reconcile")
+        bad = len(again["missing"]) + len(again["size_mismatch"]) + len(again["checksum_mismatch"]) + len(again["derived_missing"])
+        result["derived_regenerated"] = len(fix["regenerated"])
+        if not again["ok"]:
+            raise Fail("reconcile on the restored server found %d problem(s)" % bad)
+        counts = pb.call("GET", "/api/collections/media/records?perPage=1&filter=" + urllib.parse.quote('status = "stored"'))["totalItems"]
+        header = json.loads(open(os.path.join(work, "manifest.jsonl")).readline())
+        if counts != header["count"]:
+            raise Fail("the restored server has %d stored media rows but the manifest lists %d" % (counts, header["count"]))
+        result["entries"] = pb.call("GET", "/api/collections/entries/records?perPage=1")["totalItems"]
+
+        exp = os.path.join(work, "export")
+        p = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "bj_export.py"), "--data-dir", os.path.join(work, "pb_data"), "--out", exp], capture_output=True, text=True)
+        if p.returncode != 0:
+            raise Fail("the export from the restored data reported problems: %s" % (p.stderr or p.stdout)[-200:])
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import bj_export
+        ok, problems, stats = bj_export.verify_export(exp)
+        step("export")
+        if not ok:
+            raise Fail("the export did not verify: %s" % "; ".join(problems[:3]))
+        result["export"] = stats
+        result["ok"] = True
+        log("DRILL OK: %d files re-hashed, %d entries, export verified (%s)" % (result["files"], result["entries"], result["steps"]))
+    except Fail as e:
+        result["problems"].append(str(e))
+    except Exception as e:
+        result["problems"].append("unexpected error: %r" % (e,))
+    finally:
+        if proc is not None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+        if not keep:
+            shutil.rmtree(work, ignore_errors=True)
+        result["finished_at"] = iso(utcnow())
+        os.makedirs(cfg.state_dir, exist_ok=True)
+        json.dump(result, open(cfg.path("drill-%s.json" % utcnow().strftime("%Y%m%d")), "w"), indent=2)
+    if not result["ok"]:
+        alert(cfg, log, "critical", "The restore drill FAILED: %s" % "; ".join(result["problems"]))
+        return 1
+    alert(cfg, log, "info", "Restore drill passed: everything restored, verified and exported (%d files)." % result["files"])
+    return 0
+
+
 # ------------------------------------------------------------------- forget
 def cmd_forget(cfg, apply):
     """Retention (written policy): daily 14, weekly 8, monthly 12, yearly 3. Run it from a machine that
@@ -593,6 +694,9 @@ def main(argv=None):
     r.add_argument("--snapshot", default="latest")
     r.add_argument("--target", required=True)
     r.add_argument("--verify", choices=["full", "size"], default="full")
+    d = sub.add_parser("drill")
+    d.add_argument("--snapshot", default="latest")
+    d.add_argument("--keep", action="store_true", help="keep the restored copy for inspection")
     f = sub.add_parser("forget")
     f.add_argument("--apply", action="store_true")
     args = ap.parse_args(argv)
@@ -609,6 +713,8 @@ def main(argv=None):
             return cmd_watch(cfg, parse_iso(args.now) if args.now else None)
         if args.cmd == "restore":
             return cmd_restore(cfg, args.snapshot, args.target, args.verify)
+        if args.cmd == "drill":
+            return cmd_drill(cfg, args.snapshot, args.keep)
         if args.cmd == "forget":
             return cmd_forget(cfg, args.apply)
     except Fail as e:

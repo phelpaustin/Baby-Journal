@@ -1,0 +1,34 @@
+#!/bin/bash
+# Managed by Ansible (role vps). Probes the public address from outside the Mac, so it still works when the
+# Mac, the tunnel or the whole house is down (architecture 7.3). Run by a systemd timer every 2 minutes.
+# Three failures in a row (about 6 minutes) raise one alert; a recovery notice follows when it answers again.
+set -uo pipefail
+URL="${UPTIME_URL:-https://{{ domain }}/api/health}"
+STATE="${UPTIME_STATE:-{{ uptime_state_dir }}/fails}"
+THRESHOLD="${UPTIME_THRESHOLD:-{{ uptime_threshold }}}"
+mkdir -p "$(dirname "$STATE")"
+fails=$(cat "$STATE" 2>/dev/null || echo 0)
+
+alert() {  # alert <level> <message>
+{% if uptime_alert_cmd %}
+  "{{ uptime_alert_cmd }}" "$1" "$2"
+{% else %}
+{% if alert_url %}
+  curl -fsS -m 15 -H "Title: Baby Journal ($1)" -d "$2" "{{ alert_url }}" >/dev/null 2>&1 || logger -t bj-uptime "alert could not be sent: $2"
+{% else %}
+  logger -t bj-uptime "[$1] $2"
+{% endif %}
+{% endif %}
+}
+
+if curl -fsS -m 20 {{ uptime_curl_extra | default('') }} "$URL" >/dev/null 2>&1; then
+  if [ "$fails" -ge "$THRESHOLD" ]; then alert info "The journal answers again at $URL."; fi
+  echo 0 > "$STATE"
+else
+  fails=$((fails + 1))
+  echo "$fails" > "$STATE"
+  if [ "$fails" -eq "$THRESHOLD" ]; then
+    alert critical "The journal does not answer at $URL (checked from the VPS, $THRESHOLD times in a row). Check the Mac, the tunnel and the home internet."
+  fi
+fi
+exit 0

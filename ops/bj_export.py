@@ -276,14 +276,80 @@ def write_checksums(out):
         f.write("\n".join(sorted(lines, key=lambda s: s.split("  ", 1)[1])) + "\n")
 
 
+def verify_export(folder, check_hashes=True):
+    """Checks an export folder the way a person opening it years later would rely on it. Returns (ok, problems, stats)."""
+    problems = []
+    roots = [folder] if os.path.exists(os.path.join(folder, "journal.json")) else [os.path.join(folder, d) for d in sorted(os.listdir(folder)) if os.path.isdir(os.path.join(folder, d))]
+    stats = {"journals": 0, "entries": 0, "files": 0}
+    if not roots:
+        problems.append("no journal folder found in %s" % folder)
+    for root in roots:
+        stats["journals"] += 1
+        for needed in ("README.md", "index.html", "journal.json", "checksums.sha256"):
+            if not os.path.isfile(os.path.join(root, needed)):
+                problems.append("%s: %s is missing" % (os.path.basename(root), needed))
+        try:
+            j = json.load(open(os.path.join(root, "journal.json"), encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            problems.append("%s: journal.json cannot be read (%s)" % (os.path.basename(root), e))
+            continue
+        if j.get("schema_version") != SCHEMA_VERSION:
+            problems.append("%s: unexpected schema_version %r" % (os.path.basename(root), j.get("schema_version")))
+        live = [e for e in j.get("entries", []) if not e.get("deleted_at")]
+        folders = [os.path.join(dp) for dp, _dn, fn in os.walk(os.path.join(root, "entries")) if "entry.json" in fn]
+        stats["entries"] += len(live)
+        if len(folders) != len(live):
+            problems.append("%s: %d entries in journal.json but %d entry folders" % (os.path.basename(root), len(live), len(folders)))
+        for d in folders:
+            try:
+                e = json.load(open(os.path.join(d, "entry.json"), encoding="utf-8"))
+            except (OSError, ValueError):
+                problems.append("%s: entry.json unreadable" % os.path.relpath(d, root))
+                continue
+            if not os.path.isfile(os.path.join(d, "entry.md")):
+                problems.append("%s: entry.md is missing" % os.path.relpath(d, root))
+            for m in e.get("media", []):
+                if m.get("file"):
+                    stats["files"] += 1
+                    if not os.path.isfile(os.path.join(d, m["file"])):
+                        problems.append("%s: %s is missing" % (os.path.relpath(d, root), m["file"]))
+        try:
+            page = open(os.path.join(root, "index.html"), encoding="utf-8").read()
+            for link in re.findall(r"(?:href|src)='(entries/[^']+)'", page):
+                if not os.path.exists(os.path.join(root, urllib.parse.unquote(link))):
+                    problems.append("index.html links to a missing file: %s" % link)
+        except OSError:
+            pass
+        if check_hashes and os.path.isfile(os.path.join(root, "checksums.sha256")):
+            for line in open(os.path.join(root, "checksums.sha256"), encoding="utf-8"):
+                if "  " not in line:
+                    continue
+                digest, rel = line.rstrip("\n").split("  ", 1)
+                p2 = os.path.join(root, rel)
+                if not os.path.isfile(p2):
+                    problems.append("checksums.sha256 lists a missing file: %s" % rel)
+                elif sha256_file(p2) != digest:
+                    problems.append("checksum differs: %s" % rel)
+    return (not problems), problems, stats
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--data-dir", help="a pb_data folder (uses data.db and the originals folder inside it)")
     ap.add_argument("--db", help="a database file or snapshot")
     ap.add_argument("--originals", help="the originals folder (storage/<media_originals collection id>)")
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--out")
     ap.add_argument("--journal", help="export only this journal id")
+    ap.add_argument("--verify", metavar="FOLDER", help="check an existing export folder (structure, links, every checksum) and exit")
     args = ap.parse_args(argv)
+    if args.verify:
+        ok, problems, stats = verify_export(args.verify)
+        print("%s: %d journal(s), %d entries, %d files" % ("export verified" if ok else "EXPORT HAS PROBLEMS", stats["journals"], stats["entries"], stats["files"]))
+        for pr in problems[:20]:
+            print("  PROBLEM: " + pr, file=sys.stderr)
+        return 0 if ok else 1
+    if not args.out:
+        ap.error("--out is required")
     db = args.db or (os.path.join(args.data_dir, "data.db") if args.data_dir else None)
     if not db:
         ap.error("give --db or --data-dir")

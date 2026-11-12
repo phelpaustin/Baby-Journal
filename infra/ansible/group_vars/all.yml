@@ -73,3 +73,9 @@ backup_check_subset: "5%"
 healthcheck_url: ""                              # optional dead-man switch, e.g. https://hc-ping.com/<uuid>
 purge_enable: "0"                                # "1" lets the daily trash purge delete (after reviewing dry runs)
 brew_user: admin                                 # the account that owns Homebrew (it refuses to run as root)
+
+# ---- Operations (step 7)
+smart_device: ""                                 # e.g. /dev/disk4 for smartctl (brew install smartmontools); empty = ask diskutil
+uptime_state_dir: /var/lib/bj-uptime
+uptime_threshold: 3                              # failed probes in a row before the alert (probes run every 2 minutes)
+uptime_alert_cmd: ""                             # tests only; normally the alert goes to alert_url

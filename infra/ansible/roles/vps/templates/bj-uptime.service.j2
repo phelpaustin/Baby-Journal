@@ -1,0 +1,13 @@
+# Managed by Ansible (role vps).
+[Unit]
+Description=Baby Journal uptime probe
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/bj-uptime-check.sh
+User=nobody
+StateDirectory=bj-uptime
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true

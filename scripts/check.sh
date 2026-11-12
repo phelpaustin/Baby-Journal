@@ -42,6 +42,6 @@ case "$what" in
     run chain 170 "$ROOT/infra/tests/run-chain.sh" ;;
 esac
 if [ "$what" = ops ]; then
-  ONLY="${2:-nightly}" run "ops[${2:-nightly}]" 170 "$ROOT/ops/tests/run.sh"
+  ONLY="${2:-nightly}" run "ops[${2:-nightly}]" "${OPS_TIMEOUT:-170}" "$ROOT/ops/tests/run.sh"
 fi
 cleanup

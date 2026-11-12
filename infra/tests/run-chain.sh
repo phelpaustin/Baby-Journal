@@ -26,7 +26,7 @@ PB="$ROOT/tools/pocketbase"
 export BJ_TEST_NO_RATE_LIMIT=""    # rate limits ON: they are part of what is tested
 "$PB" superuser upsert admin@test.local 'test-admin-password-1' --dir "$W/pb" --migrationsDir "$ROOT/backend/pb_migrations" >/dev/null
 "$PB" serve --dir "$W/pb" --migrationsDir "$ROOT/backend/pb_migrations" --hooksDir "$ROOT/backend/pb_hooks" --publicDir "$W/public" --http 127.0.0.1:$PB_PORT >"$W/pb.log" 2>&1 & PIDS+=($!)
-XDG_DATA_HOME="$W/caddy-data" XDG_CONFIG_HOME="$W/caddy-config" HOME="$W" "$ROOT/tools/caddy" run --config "$R/Caddyfile" --adapter caddyfile >"$W/caddy.log" 2>&1 & PIDS+=($!)
+XDG_DATA_HOME="$W/caddy-data" XDG_CONFIG_HOME="$W/caddy-config" HOME="$W" "${CADDY_BIN:-$ROOT/tools/caddy}" run --config "$R/Caddyfile" --adapter caddyfile >"$W/caddy.log" 2>&1 & PIDS+=($!)
 
 wait_port() { for i in $(seq 1 100); do (exec 3<>/dev/tcp/127.0.0.1/$1) 2>/dev/null && return 0; sleep 0.2; done; echo "port $1 did not open"; return 1; }
 # HAProxy starts only after Caddy listens: its first health check must not find the backend down.

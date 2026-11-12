@@ -9,3 +9,5 @@
   ansible.builtin.systemd: { name: ssh, state: reloaded }
 - name: restart journald
   ansible.builtin.systemd: { name: systemd-journald, state: restarted }
+- name: reload systemd
+  ansible.builtin.systemd: { daemon_reload: true }

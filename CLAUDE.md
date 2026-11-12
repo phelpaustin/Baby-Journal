@@ -7,20 +7,20 @@ It is ~70 KB: do not read it whole. Section map: 2 requirements, 4 clients, 5 ba
 
 ## Status (build order, section 15)
 1 data foundation done | 2 media integrity done | 3 offline PWA done (not yet on real phones) | 4 network/security done (not yet on real hardware) |
-5 backups/recovery done (not yet on Google Drive or the Mac) | 6 migration tooling + pilot kit built and tested (`ops/bj_import.py`, `bj_firestore_adapter.py`, in-app diagnostics, `infra/docs/migration.md`, `pilot.md`); **the real import needs sample Firestore documents from the owner, and the pilot needs real phones** | 7 operate.
+5 backups/recovery done (not yet on Google Drive or the Mac) | 6 migration tooling + pilot kit built and tested (`ops/bj_import.py`, `bj_firestore_adapter.py`, in-app diagnostics, `infra/docs/migration.md`, `pilot.md`); **the real import needs sample Firestore documents from the owner, and the pilot needs real phones** | 7 operate: monitoring, quarterly restore drill, monthly report, uptime probe, upgrade rehearsals, runbooks built and tested (`infra/docs/operations.md`, `docs/decisions.md`); the jobs have not run on the real Mac.
 Nothing here has run on real infrastructure. Open owner decisions are listed at the end of README.md and infra/docs/*.md.
 
 ## Layout
 - `backend/` PocketBase 0.40.6 (pinned): `pb_migrations/` schema + rules, `pb_hooks/` routes (`main.pb.js` entries/invites/members, `media.pb.js`, `backup.pb.js`, `maintenance.pb.js`) and shared code (`lib.js`, `media_lib.js`, `maintenance_lib.js`), `tests/`
 - `client/` React 19 + Vite PWA, plain JS. `src/lib/` sync engine (`sync.js`), upload queue (`media.js`), IndexedDB (`db.js`), `age.js`; `src/ui/` screens; `tests/` vitest against the real server
-- `ops/` `bj_backup.py` (backup/watch/restore/forget), `bj_export.py` (plain export), `bj_firestore_adapter.py` + `bj_import.py` (migration: check/run/reconcile, idempotent). Python stdlib only
+- `ops/` `bj_backup.py` (backup/watch/restore/forget), `bj_export.py` (plain export), `bj_firestore_adapter.py` + `bj_import.py` (migration: check/run/reconcile, idempotent), `bj_monitor.py` (checks, capacity, monthly report); `bj_backup.py drill` is the scripted quarterly restore check. Python stdlib only
 - `infra/` `ansible/` (roles `vps`, `macmini`; templates are the single source for Caddy/HAProxy/launchd), `tests/`, `docs/runbook.md`, `docs/recovery.md`
-- `tools/` `get-pocketbase.sh`, `get-caddy.sh` (binaries are not committed). `scripts/check.sh` runs the tests
+- `tools/` `get-pocketbase.sh`, `get-caddy.sh` (binaries are not committed). `scripts/`: `check.sh` runs the tests, `versions.sh` pinned vs latest, `upgrade-pocketbase.sh` / `upgrade-caddy.sh <ver>` rehearse an upgrade against the suites. `docs/decisions.md` is the decision log (add a line when something is decided)
 
 ## Run the tests (use this, it prints a few lines; full logs go to /tmp/bj-check/<suite>.log: grep them, never print them whole)
     scripts/check.sh               backend (79) + client (53), about 1 minute
-    scripts/check.sh infra         config checks (22), mount guard (7), network chain (31)
-    scripts/check.sh ops "restore|export"   the slow backup suite in parts; groups: nightly, consistency, killed, failures, alert levels, restore on, retention, export, import (each part under 3 minutes)
+    scripts/check.sh infra         config checks (29), mount guard (7), network chain + uptime probe (35)
+    scripts/check.sh ops "restore|export"   the slow backup suite in parts; groups: nightly, consistency, killed, failures, alert levels, restore on, restore drill, retention, export, import, continuous checks, capacity (each part under 3 minutes; `failures` needs `OPS_TIMEOUT=240`)
 Needs: node 22, python3, ffmpeg, ImageMagick, exiftool, restic, sqlite3, haproxy, wireguard-tools, ansible-core; `tools/get-pocketbase.sh` and `tools/get-caddy.sh` run once.
 
 ## Behaviour that matters (do not break; each has a test)

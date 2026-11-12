@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.babyjournal.monitor</string>
+  <!-- Runs as root because `wg show` needs it. It only reads, and keeps its own state folder so no file
+       in the backup's state folder ever becomes root-owned. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string><string>{{ bj_root }}/bin/bj_monitor.py</string>
+    <string>--env-file</string><string>{{ bj_root }}/etc/backup.env</string><string>check</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>BJ_STATE_DIR</key><string>{{ bj_state_dir }}/monitor</string>
+    <key>BJ_DRILL_DIR</key><string>{{ bj_state_dir }}</string>
+  </dict>
+  <key>StartInterval</key><integer>600</integer>
+  <key>RunAtLoad</key><true/>
+  <key>Nice</key><integer>10</integer>
+  <key>StandardOutPath</key><string>{{ caddy_log_dir }}/monitor.log</string>
+  <key>StandardErrorPath</key><string>{{ caddy_log_dir }}/monitor.log</string>
+</dict>
+</plist>

@@ -9,3 +9,4 @@ client/dist/
 tools/caddy
 __pycache__/
 *.pyc
+tools/upgrade/

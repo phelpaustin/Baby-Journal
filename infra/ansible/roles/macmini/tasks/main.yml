@@ -134,7 +134,7 @@
     owner: root
     group: wheel
     mode: "0755"
-  loop: [bj_backup.py, bj_export.py]
+  loop: [bj_backup.py, bj_export.py, bj_monitor.py]
 
 - name: Monthly export wrapper
   ansible.builtin.template:
@@ -160,7 +160,7 @@
     group: wheel
     mode: "0644"
     validate: plutil -lint %s
-  loop: [com.babyjournal.backup, com.babyjournal.backup-watch, com.babyjournal.export]
+  loop: [com.babyjournal.backup, com.babyjournal.backup-watch, com.babyjournal.export, com.babyjournal.monitor, com.babyjournal.report, com.babyjournal.drill]
   register: job_plists
 
 - name: Load the jobs
@@ -172,6 +172,12 @@
 
 # The live database changes constantly, so a Time Machine copy of it is not a consistent backup.
 # Exclude it; Time Machine still copies the nightly snapshots, manifests and exports.
+- name: Separate state folder for the monitor (it runs as root, so it must not share the backup's)
+  ansible.builtin.file:
+    path: "{{ bj_state_dir }}/monitor"
+    state: directory
+    mode: "0755"
+
 - name: Keep the live database out of Time Machine
   ansible.builtin.command: "tmutil addexclusion -p {{ bj_data_dir }}/{{ item }}"
   loop: [data.db, data.db-wal, data.db-shm, auxiliary.db, auxiliary.db-wal, auxiliary.db-shm]
