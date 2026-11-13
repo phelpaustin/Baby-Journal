@@ -10,3 +10,14 @@ tools/caddy
 __pycache__/
 *.pyc
 tools/upgrade/
+
+# secrets and machine-specific files: never commit
+infra/ansible/vault.yml
+infra/ansible/inventory.yml
+*.env
+!*.env.j2
+backup.env
+rclone.conf
+*.pem
+*.key
+.vault-pass*
